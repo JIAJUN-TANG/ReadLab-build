@@ -50,8 +50,12 @@ def create_user():
         email=data.get('email'),
         role=data['role'],
         group=data.get('group'),
-        avatar_url=data.get('avatar_url'),
-        password=hashed_password
+        password=hashed_password,
+        age=data.get('age'),
+        gender=data.get('gender'),
+        education=data.get('education'),
+        income=data.get('income'),
+        occupation=data.get('occupation')
     )
 
     try:
@@ -82,13 +86,23 @@ def update_user(phone_number):
         user.role = data['role']
     if 'group' in data:
         user.group = data['group']
-    if 'avatar_url' in data:
-        user.avatar_url = data['avatar_url']
     if 'password' in data:
         # 对密码进行加密
         password = data['password']
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         user.password = hashed_password
+    if 'age' in data:
+        user.age = data['age']
+    if 'gender' in data:
+        user.gender = data['gender']
+    if 'education' in data:
+        user.education = data['education']
+    if 'income' in data:
+        user.income = data['income']
+    if 'occupation' in data:
+        user.occupation = data['occupation']
+    if 'consent_given' in data:
+        user.consent_given = data['consent_given']
 
     try:
         db.session.commit()
