@@ -13,7 +13,7 @@ class User(db.Model):
     name = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(100), nullable=True, unique=True)
     role = db.Column(db.String(20), nullable=False)
-    group = db.Column(db.String(50), nullable=True)
+    group = db.Column(db.String(50), nullable=True, default='A')
     password = db.Column(db.String(255), nullable=True)
     consent_given = db.Column(db.Boolean, nullable=False, default=False)  # 新增字段，标记用户是否同意了知情同意书
     age = db.Column(db.Integer, nullable=True)
@@ -38,6 +38,7 @@ class User(db.Model):
             'education': self.education,
             'income': self.income,
             'occupation': self.occupation,
+            'assigned_materials_count': len(self.assigned_materials),
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
         }
@@ -136,5 +137,56 @@ class Log(db.Model):
             'action': self.action,
             'materialId': self.material_id,
             'details': self.details,
+            'createdAt': self.created_at.isoformat()
+        }
+
+class MaterialFormConfig(db.Model):
+    """实验配置表：材料与表单的关联"""
+    __tablename__ = 'material_form_configs'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    material_id = db.Column(db.String(36), db.ForeignKey('materials.id'), nullable=False)
+    form_id = db.Column(db.String(36), db.ForeignKey('forms.id'), nullable=False)
+    trigger_timing = db.Column(db.String(20), default='post_read')  # 'pre_read', 'post_read'
+    is_active = db.Column(db.Boolean, default=True)
+    
+    # 关系
+    material = db.relationship('Material', backref=db.backref('form_configs', lazy=True))
+    form = db.relationship('Form', backref=db.backref('material_configs', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'materialId': self.material_id,
+            'formId': self.form_id,
+            'triggerTiming': self.trigger_timing,
+            'isActive': self.is_active
+        }
+
+class UserResponse(db.Model):
+    """用户答卷记录表"""
+    __tablename__ = 'user_responses'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.String(20), db.ForeignKey('users.phone_number'), nullable=False)
+    material_id = db.Column(db.String(36), db.ForeignKey('materials.id'), nullable=False)
+    form_id = db.Column(db.String(36), db.ForeignKey('forms.id'), nullable=False)
+    answers = db.Column(db.JSON, nullable=False)  # JSON格式存储答案
+    duration_seconds = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(beijing_tz))
+
+    # 关系
+    user = db.relationship('User', backref=db.backref('responses', lazy=True))
+    material = db.relationship('Material', backref=db.backref('responses', lazy=True))
+    form = db.relationship('Form', backref=db.backref('responses', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'userId': self.user_id,
+            'materialId': self.material_id,
+            'formId': self.form_id,
+            'answers': self.answers,
+            'durationSeconds': self.duration_seconds,
             'createdAt': self.created_at.isoformat()
         }

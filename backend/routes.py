@@ -1,6 +1,6 @@
 # API路由
 from flask import Blueprint, request, jsonify
-from models import User, Material, MaterialAssignment, Log, Form
+from models import User, Material, MaterialAssignment, Log, Form, MaterialFormConfig, UserResponse
 from db import db
 import json
 import bcrypt
@@ -106,9 +106,12 @@ def update_user(phone_number):
 
     try:
         db.session.commit()
+        # 刷新用户对象以确保关系加载正确
+        db.session.refresh(user)
         return jsonify(user.to_dict())
     except Exception as e:
         db.session.rollback()
+        print(f"Update user error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/users/<string:phone_number>', methods=['DELETE'])
@@ -119,6 +122,13 @@ def delete_user(phone_number):
         return jsonify({'error': 'User not found'}), 404
 
     try:
+        # 手动删除相关联的记录
+        # 1. 删除日志
+        Log.query.filter_by(user_id=phone_number).delete()
+        # 2. 删除材料分配
+        MaterialAssignment.query.filter_by(user_id=phone_number).delete()
+        
+        # 3. 删除用户
         db.session.delete(user)
         db.session.commit()
         return jsonify({'success': True})
@@ -323,11 +333,15 @@ def mark_material_read(id, userId):
         assignment = MaterialAssignment.query.filter_by(
             material_id=id, user_id=userId
         ).first()
-        if assignment:
-            assignment.read_status = True
-            db.session.commit()
-            return jsonify({'success': True, 'readStatus': assignment.read_status})
-        return jsonify({'error': 'Assignment not found'}), 404
+        
+        if not assignment:
+            # If assignment doesn't exist, create it (auto-assign on read)
+            assignment = MaterialAssignment(material_id=id, user_id=userId)
+            db.session.add(assignment)
+            
+        assignment.read_status = True
+        db.session.commit()
+        return jsonify({'success': True, 'readStatus': assignment.read_status})
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
@@ -525,3 +539,107 @@ def update_consent(phone_number):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+# Material-Form Config Routes
+@api_bp.route('/material-form-configs', methods=['POST'])
+def create_material_form_config():
+    """创建材料与表单的关联"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    required_fields = ['materialId', 'formId']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'error': f'Missing required field: {field}'}), 400
+
+    new_config = MaterialFormConfig(
+        material_id=data['materialId'],
+        form_id=data['formId'],
+        trigger_timing=data.get('triggerTiming', 'post_read'),
+        is_active=data.get('isActive', True)
+    )
+
+    try:
+        db.session.add(new_config)
+        db.session.commit()
+        return jsonify(new_config.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/materials/<string:materialId>/forms', methods=['GET'])
+def get_material_forms(materialId):
+    """获取材料关联的表单"""
+    timing = request.args.get('timing')
+    query = MaterialFormConfig.query.filter_by(material_id=materialId, is_active=True)
+    
+    if timing:
+        query = query.filter_by(trigger_timing=timing)
+        
+    configs = query.all()
+    
+    # 返回包含表单详情的配置列表
+    result = []
+    for config in configs:
+        config_dict = config.to_dict()
+        config_dict['form'] = config.form.to_dict()
+        result.append(config_dict)
+        
+    return jsonify(result)
+
+@api_bp.route('/material-form-configs/<int:id>', methods=['DELETE'])
+def delete_material_form_config(id):
+    """删除关联"""
+    config = MaterialFormConfig.query.get(id)
+    if not config:
+        return jsonify({'error': 'Config not found'}), 404
+
+    try:
+        db.session.delete(config)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+# User Response Routes
+@api_bp.route('/user-responses', methods=['POST'])
+def create_user_response():
+    """提交用户答卷"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    required_fields = ['userId', 'materialId', 'formId', 'answers']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'error': f'Missing required field: {field}'}), 400
+
+    new_response = UserResponse(
+        user_id=data['userId'],
+        material_id=data['materialId'],
+        form_id=data['formId'],
+        answers=data['answers'],
+        duration_seconds=data.get('durationSeconds')
+    )
+
+    try:
+        db.session.add(new_response)
+        db.session.commit()
+        return jsonify(new_response.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/user-responses/user/<string:userId>', methods=['GET'])
+def get_user_responses(userId):
+    """获取用户的答卷记录"""
+    responses = UserResponse.query.filter_by(user_id=userId).order_by(UserResponse.created_at.desc()).all()
+    return jsonify([resp.to_dict() for resp in responses])
+
+@api_bp.route('/user-responses/material/<string:materialId>', methods=['GET'])
+def get_material_responses(materialId):
+    """获取材料的答卷记录"""
+    responses = UserResponse.query.filter_by(material_id=materialId).order_by(UserResponse.created_at.desc()).all()
+    return jsonify([resp.to_dict() for resp in responses])

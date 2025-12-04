@@ -158,6 +158,37 @@ class Log(db.Model):
             'createdAt': self.created_at.isoformat()
         }
 
+class MaterialFormConfig(db.Model):
+    """实验配置表：材料与表单的关联"""
+    __tablename__ = 'material_form_configs'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    material_id = db.Column(db.String(36), db.ForeignKey('materials.id'), nullable=False)
+    form_id = db.Column(db.String(36), db.ForeignKey('forms.id'), nullable=False)
+    trigger_timing = db.Column(db.String(20), default='post_read')  # 'pre_read', 'post_read'
+    is_active = db.Column(db.Boolean, default=True)
+    
+    # 关系
+    material = db.relationship('Material', backref=db.backref('form_configs', lazy=True))
+    form = db.relationship('Form', backref=db.backref('material_configs', lazy=True))
+
+class UserResponse(db.Model):
+    """用户答卷记录表"""
+    __tablename__ = 'user_responses'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.String(20), db.ForeignKey('users.phone_number'), nullable=False)
+    material_id = db.Column(db.String(36), db.ForeignKey('materials.id'), nullable=False)
+    form_id = db.Column(db.String(36), db.ForeignKey('forms.id'), nullable=False)
+    answers = db.Column(db.JSON, nullable=False)  # JSON格式存储答案
+    duration_seconds = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(beijing_tz))
+
+    # 关系
+    user = db.relationship('User', backref=db.backref('responses', lazy=True))
+    material = db.relationship('Material', backref=db.backref('responses', lazy=True))
+    form = db.relationship('Form', backref=db.backref('responses', lazy=True))
+
 # Create database and tables
 with app.app_context():
     from urllib.parse import urlparse
@@ -243,3 +274,111 @@ with app.app_context():
             db.session.add(user)
         db.session.commit()
         print("Default users added successfully!")
+
+    # Initialize Mock Materials
+    if not Material.query.first():
+        print("Initializing mock materials...")
+        materials = [
+            {
+                'id': 'mat_001',
+                'title': '人工智能的发展历程',
+                'author': '张三',
+                'type': 'TEXT',
+                'content': '人工智能（Artificial Intelligence），英文缩写为AI。它是研究、开发用于模拟、延伸和扩展人的智能的理论、方法、技术及应用系统的一门新的技术科学。\n\n人工智能是计算机科学的一个分支，它企图了解智能的实质，并生产出一种新的能以人类智能相似的方式做出反应的智能机器，该领域的研究包括机器人、语言识别、图像识别、自然语言处理和专家系统等。',
+                'cover_url': 'https://images.unsplash.com/photo-1677442136019-21780ecad995'
+            },
+            {
+                'id': 'mat_002',
+                'title': '深度学习入门',
+                'author': '李四',
+                'type': 'VIDEO',
+                'content': 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+                'cover_url': 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485'
+            }
+        ]
+        for mat_data in materials:
+            mat = Material(**mat_data)
+            db.session.add(mat)
+        db.session.commit()
+        print("Mock materials added!")
+
+    # Initialize Mock Forms
+    if not Form.query.first():
+        print("Initializing mock forms...")
+        forms = [
+            {
+                'id': 'form_consent',
+                'title': '知情同意书',
+                'type': 'CONSENT',
+                'content': '<p>我同意参与本实验...</p>',
+                'questions': None
+            },
+            {
+                'id': 'form_pre_001',
+                'title': '阅读前测验',
+                'type': 'QUESTIONNAIRE',
+                'content': '请回答以下问题',
+                'questions': '[{"id": "q1", "text": "你对AI了解多少？", "type": "scale", "options": [1, 2, 3, 4, 5]}]'
+            },
+            {
+                'id': 'form_post_001',
+                'title': '阅读后测验',
+                'type': 'QUESTIONNAIRE',
+                'content': '请根据阅读内容回答',
+                'questions': '[{"id": "q1", "text": "文章的主旨是什么？", "type": "text"}, {"id": "q2", "text": "你觉得这篇文章难吗？", "type": "choice", "options": ["难", "一般", "简单"]}]'
+            }
+        ]
+        for form_data in forms:
+            form = Form(**form_data)
+            db.session.add(form)
+        db.session.commit()
+        print("Mock forms added!")
+
+    # Initialize Material-Form Configs
+    if not MaterialFormConfig.query.first():
+        print("Linking materials and forms...")
+        configs = [
+            {
+                'material_id': 'mat_001',
+                'form_id': 'form_pre_001',
+                'trigger_timing': 'pre_read'
+            },
+            {
+                'material_id': 'mat_001',
+                'form_id': 'form_post_001',
+                'trigger_timing': 'post_read'
+            }
+        ]
+        for config_data in configs:
+            config = MaterialFormConfig(**config_data)
+            db.session.add(config)
+        db.session.commit()
+        print("Material-Form links added!")
+
+    # Assign materials to users
+    print("Assigning materials to users...")
+    user = User.query.filter_by(phone_number='13800138001').first()
+    material = Material.query.get('mat_001')
+    if user and material:
+        assignment = MaterialAssignment(material_id=material.id, user_id=user.phone_number)
+        db.session.add(assignment)
+        try:
+            db.session.commit()
+            print(f"Assigned {material.title} to {user.name}")
+        except:
+            db.session.rollback()
+            print("Assignment already exists")
+
+    # Mock User Response
+    if not UserResponse.query.first():
+        print("Adding mock user response...")
+        response = UserResponse(
+            user_id='13800138001',
+            material_id='mat_001',
+            form_id='form_pre_001',
+            answers={'q1': 4},
+            duration_seconds=30
+        )
+        db.session.add(response)
+        db.session.commit()
+        print("Mock response added!")
