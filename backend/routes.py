@@ -1,12 +1,52 @@
 # API路由
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_from_directory, Response, stream_with_context
 from models import User, Material, MaterialAssignment, Log, Form, MaterialFormConfig, UserResponse
 from db import db
 import json
 import bcrypt
+import os
+import requests
 
 # 创建蓝图
 api_bp = Blueprint('api', __name__, url_prefix='/api')
+
+@api_bp.route('/proxy', methods=['GET'])
+def proxy_image():
+    """代理图片请求，解决防盗链问题"""
+    image_url = request.args.get('url')
+    if not image_url:
+        return jsonify({'error': 'No URL provided'}), 400
+        
+    try:
+        # 伪造 Referer 头部
+        headers = {
+            'Referer': 'https://movie.douban.com',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        # 发起请求, stream=True 用于流式传输
+        resp = requests.get(image_url, headers=headers, stream=True, timeout=10)
+        
+        # 检查响应状态
+        if resp.status_code != 200:
+            return jsonify({'error': f'Failed to fetch image, status: {resp.status_code}'}), resp.status_code
+            
+        # 获取内容类型
+        content_type = resp.headers.get('content-type')
+        
+        # 排除非图片类型 (可选)
+        # if 'image' not in content_type:
+        #     return jsonify({'error': 'URL is not an image'}), 400
+            
+        # 创建流式响应
+        return Response(
+            stream_with_context(resp.iter_content(chunk_size=1024)), 
+            content_type=content_type
+        )
+            
+    except Exception as e:
+        print(f"Proxy error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/users', methods=['GET'])
 def get_users():
@@ -391,12 +431,29 @@ def create_log():
         if field not in data:
             return jsonify({'error': f'Missing required field: {field}'}), 400
 
+    # 获取IP地址
+    if request.headers.getlist("X-Forwarded-For"):
+        ip_address = request.headers.getlist("X-Forwarded-For")[0]
+    else:
+        ip_address = request.remote_addr
+
+    # 获取User-Agent
+    user_agent = data.get('userAgent') or request.headers.get('User-Agent')
+
+    # 构建详情JSON
+    details_content = data.get('details')
+    details_json = {
+        'content': details_content,
+        'ip': ip_address,
+        'userAgent': user_agent
+    }
+
     # 创建新日志
     new_log = Log(
         user_id=data['userId'],
         action=data['action'],
         material_id=data.get('materialId'),
-        details=data.get('details')
+        details=json.dumps(details_json, ensure_ascii=False)
     )
 
     try:
@@ -643,3 +700,143 @@ def get_material_responses(materialId):
     """获取材料的答卷记录"""
     responses = UserResponse.query.filter_by(material_id=materialId).order_by(UserResponse.created_at.desc()).all()
     return jsonify([resp.to_dict() for resp in responses])
+
+# Admin User Response Routes
+@api_bp.route('/admin/user-responses', methods=['GET'])
+def get_all_user_responses():
+    """管理员获取所有答卷记录"""
+    responses = UserResponse.query.order_by(UserResponse.created_at.desc()).all()
+    # 丰富返回数据，包含用户姓名、材料标题、表单标题
+    result = []
+    for resp in responses:
+        data = resp.to_dict()
+        data['userName'] = resp.user.name if resp.user else 'Unknown'
+        data['materialTitle'] = resp.material.title if resp.material else 'Unknown'
+        data['formTitle'] = resp.form.title if resp.form else 'Unknown'
+        result.append(data)
+    return jsonify(result)
+
+@api_bp.route('/admin/user-responses/<int:id>', methods=['GET'])
+def get_user_response_detail(id):
+    """管理员获取单个答卷详情"""
+    response = UserResponse.query.get(id)
+    if not response:
+        return jsonify({'error': 'Response not found'}), 404
+        
+    data = response.to_dict()
+    data['userName'] = response.user.name if response.user else 'Unknown'
+    data['materialTitle'] = response.material.title if response.material else 'Unknown'
+    data['formTitle'] = response.form.title if response.form else 'Unknown'
+    return jsonify(data)
+
+@api_bp.route('/admin/user-responses/<int:id>', methods=['PUT'])
+def update_user_response(id):
+    """管理员更新答卷内容"""
+    response = UserResponse.query.get(id)
+    if not response:
+        return jsonify({'error': 'Response not found'}), 404
+    
+    data = request.get_json()
+    if 'answers' in data:
+        response.answers = data['answers']
+    
+    try:
+        db.session.commit()
+        return jsonify(response.to_dict())
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/admin/user-responses/<int:id>', methods=['DELETE'])
+def delete_user_response(id):
+    """管理员删除答卷"""
+    response = UserResponse.query.get(id)
+    if not response:
+        return jsonify({'error': 'Response not found'}), 404
+    
+    try:
+        db.session.delete(response)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/admin/user-responses/<int:id>/download', methods=['GET'])
+def download_user_response(id):
+    """下载单个答卷为JSON"""
+    response = UserResponse.query.get(id)
+    if not response:
+        return jsonify({'error': 'Response not found'}), 404
+    
+    data = response.to_dict()
+    data['userName'] = response.user.name if response.user else 'Unknown'
+    data['materialTitle'] = response.material.title if response.material else 'Unknown'
+    data['formTitle'] = response.form.title if response.form else 'Unknown'
+    
+    # 返回JSON文件下载
+    return Response(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        mimetype='application/json',
+        headers={'Content-Disposition': f'attachment;filename=response_{id}_{response.user_id}.json'}
+    )
+
+@api_bp.route('/admin/user-responses/export', methods=['POST'])
+def export_user_responses():
+    """批量导出答卷"""
+    data = request.get_json() or {}
+    ids = data.get('ids', [])
+    
+    query = UserResponse.query
+    if ids:
+        query = query.filter(UserResponse.id.in_(ids))
+    
+    responses = query.order_by(UserResponse.created_at.desc()).all()
+    
+    result = []
+    for resp in responses:
+        item = resp.to_dict()
+        item['userName'] = resp.user.name if resp.user else 'Unknown'
+        item['materialTitle'] = resp.material.title if resp.material else 'Unknown'
+        item['formTitle'] = resp.form.title if resp.form else 'Unknown'
+        result.append(item)
+        
+    return Response(
+        json.dumps(result, ensure_ascii=False, indent=2),
+        mimetype='application/json',
+        headers={'Content-Disposition': 'attachment;filename=responses_export.json'}
+    )
+
+# EPUB File Upload Route
+@api_bp.route('/upload-epub', methods=['POST'])
+def upload_epub():
+    """上传EPUB文件"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    
+    file = request.files['file']
+    filename = request.form.get('filename')
+    
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    
+    if not filename:
+        return jsonify({'error': 'No filename provided'}), 400
+    
+    # Ensure the epub_files directory exists
+    upload_dir = os.path.join(os.path.dirname(__file__), 'epub_files')
+    if not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
+    
+    # Save the file
+    filepath = os.path.join(upload_dir, filename)
+    file.save(filepath)
+    
+    return jsonify({'success': True, 'filename': filename, 'filepath': filepath}), 201
+
+# Serve EPUB files
+@api_bp.route('/epub-files/<filename>', methods=['GET'])
+def serve_epub(filename):
+    """提供EPUB文件下载/访问"""
+    epub_dir = os.path.join(os.path.dirname(__file__), 'epub_files')
+    return send_from_directory(epub_dir, filename, as_attachment=False)

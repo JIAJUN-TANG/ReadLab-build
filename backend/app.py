@@ -114,6 +114,7 @@ def create_app(config_name='default'):
     app.register_blueprint(api_bp)
     
     return app
+    
 
 # 运行应用
 if __name__ == '__main__':

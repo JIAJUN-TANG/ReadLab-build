@@ -74,8 +74,8 @@ class Material(db.Model):
     id = db.Column(db.String(36), primary_key=True, nullable=False)
     title = db.Column(db.String(255), nullable=False)
     author = db.Column(db.String(100), nullable=False, default='Unknown')
-    type = db.Column(db.String(20), nullable=False)  # TEXT, VIDEO, HTML, AUDIO
-    content = db.Column(db.Text, nullable=False)
+    type = db.Column(db.String(20), nullable=False)  # TEXT, VIDEO, HTML, AUDIO, EPUB
+    content = db.Column(db.Text, nullable=False)  # 文本内容(TEXT/HTML), URL(VIDEO/AUDIO), 或本地文件路径(EPUB)
     cover_url = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(beijing_tz))
     updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(beijing_tz), onupdate=lambda: datetime.now(beijing_tz))
