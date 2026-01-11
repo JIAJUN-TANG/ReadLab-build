@@ -13,7 +13,7 @@ class User(db.Model):
     name = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(100), nullable=True, unique=True)
     role = db.Column(db.String(20), nullable=False)
-    group = db.Column(db.String(50), nullable=True, default='A')
+    group = db.Column(db.String(50), nullable=True)
     password = db.Column(db.String(255), nullable=True)
     consent_given = db.Column(db.Boolean, nullable=False, default=False)  # 新增字段，标记用户是否同意了知情同意书
     age = db.Column(db.Integer, nullable=True)

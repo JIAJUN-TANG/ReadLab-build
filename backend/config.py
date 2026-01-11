@@ -11,6 +11,11 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
+    # Volcengine Media Generation Config
+    API_KEY = os.environ.get('API_KEY')
+    MEDIA_URL = os.environ.get('MEDIA_URL') or 'https://ark.cn-beijing.volces.com/api/v3/images/generations'
+    MEDIA_MODEL = os.environ.get('MEDIA_MODEL') or 'doubao-seedream-4-0-250828'
+    
     # SQLAlchemy连接池配置，优化Gunicorn多进程环境
     SQLALCHEMY_POOL_SIZE = 10
     SQLALCHEMY_POOL_TIMEOUT = 30

@@ -132,13 +132,13 @@ def update_user(phone_number):
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         user.password = hashed_password
     if 'age' in data:
-        user.age = data['age']
+        user.age = data['age'] if data['age'] else None
     if 'gender' in data:
         user.gender = data['gender']
     if 'education' in data:
         user.education = data['education']
     if 'income' in data:
-        user.income = data['income']
+        user.income = data['income'] if data['income'] else None
     if 'occupation' in data:
         user.occupation = data['occupation']
     if 'consent_given' in data:
@@ -167,8 +167,10 @@ def delete_user(phone_number):
         Log.query.filter_by(user_id=phone_number).delete()
         # 2. 删除材料分配
         MaterialAssignment.query.filter_by(user_id=phone_number).delete()
+        # 3. 删除用户答卷
+        UserResponse.query.filter_by(user_id=phone_number).delete()
         
-        # 3. 删除用户
+        # 4. 删除用户
         db.session.delete(user)
         db.session.commit()
         return jsonify({'success': True})
@@ -311,6 +313,13 @@ def delete_material(id):
     try:
         # 删除相关分配
         MaterialAssignment.query.filter_by(material_id=id).delete()
+        # 删除相关日志
+        Log.query.filter_by(material_id=id).delete()
+        # 删除相关表单配置
+        MaterialFormConfig.query.filter_by(material_id=id).delete()
+        # 删除相关用户答卷
+        UserResponse.query.filter_by(material_id=id).delete()
+        
         db.session.delete(material)
         db.session.commit()
         return jsonify({'success': True})
@@ -673,7 +682,17 @@ def create_user_response():
         if field not in data:
             return jsonify({'error': f'Missing required field: {field}'}), 400
 
+    # 计算最小可用ID (Gap-Filling)
+    existing_ids = sorted([r[0] for r in db.session.query(UserResponse.id).all()])
+    next_id = 1
+    for i in existing_ids:
+        if i == next_id:
+            next_id += 1
+        elif i > next_id:
+            break
+            
     new_response = UserResponse(
+        id=next_id,
         user_id=data['userId'],
         material_id=data['materialId'],
         form_id=data['formId'],
