@@ -11,6 +11,9 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
+    # 允许最大上传 16MB
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024
+    
     # Volcengine Media Generation Config
     API_KEY = os.environ.get('API_KEY')
     MEDIA_URL = os.environ.get('MEDIA_URL') or 'https://ark.cn-beijing.volces.com/api/v3/images/generations'
