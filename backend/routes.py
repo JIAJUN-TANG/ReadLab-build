@@ -865,9 +865,43 @@ def upload_epub():
     
     return jsonify({'success': True, 'filename': filename, 'filepath': filepath}), 201
 
+# MD File Upload Route
+@api_bp.route('/upload-md', methods=['POST'])
+def upload_md():
+    """上传MD文件"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    
+    file = request.files['file']
+    filename = request.form.get('filename')
+    
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    
+    if not filename:
+        return jsonify({'error': 'No filename provided'}), 400
+    
+    # Ensure the md_files directory exists
+    upload_dir = os.path.join(os.path.dirname(__file__), 'md_files')
+    if not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
+    
+    # Save the file
+    filepath = os.path.join(upload_dir, filename)
+    file.save(filepath)
+    
+    return jsonify({'success': True, 'filename': filename, 'filepath': filepath}), 201
+
 # Serve EPUB files
 @api_bp.route('/epub-files/<filename>', methods=['GET'])
 def serve_epub(filename):
     """提供EPUB文件下载/访问"""
     epub_dir = os.path.join(os.path.dirname(__file__), 'epub_files')
     return send_from_directory(epub_dir, filename, as_attachment=False)
+
+# Serve MD files
+@api_bp.route('/md-files/<filename>', methods=['GET'])
+def serve_md(filename):
+    """提供MD文件下载/访问"""
+    md_dir = os.path.join(os.path.dirname(__file__), 'md_files')
+    return send_from_directory(md_dir, filename, as_attachment=False)
