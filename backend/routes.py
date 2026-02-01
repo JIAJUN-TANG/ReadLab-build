@@ -203,9 +203,21 @@ def login():
     
     try:
         # 尝试使用bcrypt验证密码
-        password_valid = bcrypt.checkpw(data.get('password').encode('utf-8'), user.password.encode('utf-8'))
-    except ValueError:
-        # 如果bcrypt验证失败，尝试直接比较明文密码
+        # 检查user.password是否已经是bcrypt哈希格式（以$2b$开头）
+        if user.password and user.password.startswith('$2b$'):
+            # 如果是bcrypt哈希，直接使用
+            password_valid = bcrypt.checkpw(data.get('password').encode('utf-8'), user.password.encode('utf-8'))
+        else:
+            # 否则，尝试直接比较明文密码
+            password_valid = (user.password == data.get('password'))
+            
+            # 如果明文密码匹配，自动将其转换为bcrypt哈希并更新数据库
+            if password_valid:
+                hashed_password = bcrypt.hashpw(data.get('password').encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                user.password = hashed_password
+                db.session.commit()
+    except Exception as e:
+        # 如果验证失败，尝试直接比较明文密码
         password_valid = (user.password == data.get('password'))
         
         # 如果明文密码匹配，自动将其转换为bcrypt哈希并更新数据库
