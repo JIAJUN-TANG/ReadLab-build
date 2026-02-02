@@ -618,6 +618,28 @@ def update_consent(phone_number):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@api_bp.route('/users/<string:phone_number>/reset-experiment', methods=['POST'])
+def reset_experiment(phone_number):
+    """重置用户的实验状态"""
+    user = User.query.get(phone_number)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    try:
+        # 1. 删除材料分配记录
+        MaterialAssignment.query.filter_by(user_id=phone_number).delete()
+        # 2. 删除用户答卷记录
+        UserResponse.query.filter_by(user_id=phone_number).delete()
+        # 3. 删除相关日志记录
+        Log.query.filter_by(user_id=phone_number).delete()
+        
+        db.session.commit()
+        return jsonify({'success': True, 'message': '实验状态已重置'})
+    except Exception as e:
+        db.session.rollback()
+        print(f"Reset experiment error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 # Material-Form Config Routes
 @api_bp.route('/material-form-configs', methods=['POST'])
 def create_material_form_config():
