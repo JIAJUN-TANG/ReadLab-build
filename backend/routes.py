@@ -766,6 +766,28 @@ def get_all_user_responses():
         data['userName'] = resp.user.name if resp.user else 'Unknown'
         data['materialTitle'] = resp.material.title if resp.material else 'Unknown'
         data['formTitle'] = resp.form.title if resp.form else 'Unknown'
+        
+        # 添加问题内容映射
+        if resp.form and resp.form.questions:
+            try:
+                import json
+                questions_data = json.loads(resp.form.questions)
+                question_map = {}
+                if isinstance(questions_data, list):
+                    for q in questions_data:
+                        if isinstance(q, dict) and 'id' in q and 'text' in q:
+                            question_map[q['id']] = q['text']
+                        elif isinstance(q, str):
+                            # 简单文本格式，生成临时ID
+                            temp_id = f'q_{len(question_map) + 1}'
+                            question_map[temp_id] = q
+                data['questionMap'] = question_map
+            except Exception as e:
+                print(f"Error parsing questions: {e}")
+                data['questionMap'] = {}
+        else:
+            data['questionMap'] = {}
+            
         result.append(data)
     return jsonify(result)
 
@@ -780,6 +802,28 @@ def get_user_response_detail(id):
     data['userName'] = response.user.name if response.user else 'Unknown'
     data['materialTitle'] = response.material.title if response.material else 'Unknown'
     data['formTitle'] = response.form.title if response.form else 'Unknown'
+    
+    # 添加问题内容映射
+    if response.form and response.form.questions:
+        try:
+            import json
+            questions_data = json.loads(response.form.questions)
+            question_map = {}
+            if isinstance(questions_data, list):
+                for q in questions_data:
+                    if isinstance(q, dict) and 'id' in q and 'text' in q:
+                        question_map[q['id']] = q['text']
+                    elif isinstance(q, str):
+                        # 简单文本格式，生成临时ID
+                        temp_id = f'q_{len(question_map) + 1}'
+                        question_map[temp_id] = q
+            data['questionMap'] = question_map
+        except Exception as e:
+            print(f"Error parsing questions: {e}")
+            data['questionMap'] = {}
+    else:
+        data['questionMap'] = {}
+        
     return jsonify(data)
 
 @api_bp.route('/admin/user-responses/<int:id>', methods=['PUT'])
@@ -827,6 +871,27 @@ def download_user_response(id):
     data['materialTitle'] = response.material.title if response.material else 'Unknown'
     data['formTitle'] = response.form.title if response.form else 'Unknown'
     
+    # 添加问题内容映射
+    if response.form and response.form.questions:
+        try:
+            import json
+            questions_data = json.loads(response.form.questions)
+            question_map = {}
+            if isinstance(questions_data, list):
+                for q in questions_data:
+                    if isinstance(q, dict) and 'id' in q and 'text' in q:
+                        question_map[q['id']] = q['text']
+                    elif isinstance(q, str):
+                        # 简单文本格式，生成临时ID
+                        temp_id = f'q_{len(question_map) + 1}'
+                        question_map[temp_id] = q
+            data['questionMap'] = question_map
+        except Exception as e:
+            print(f"Error parsing questions: {e}")
+            data['questionMap'] = {}
+    else:
+        data['questionMap'] = {}
+    
     # 返回JSON文件下载
     return Response(
         json.dumps(data, ensure_ascii=False, indent=2),
@@ -852,6 +917,28 @@ def export_user_responses():
         item['userName'] = resp.user.name if resp.user else 'Unknown'
         item['materialTitle'] = resp.material.title if resp.material else 'Unknown'
         item['formTitle'] = resp.form.title if resp.form else 'Unknown'
+        
+        # 添加问题内容映射
+        if resp.form and resp.form.questions:
+            try:
+                import json
+                questions_data = json.loads(resp.form.questions)
+                question_map = {}
+                if isinstance(questions_data, list):
+                    for q in questions_data:
+                        if isinstance(q, dict) and 'id' in q and 'text' in q:
+                            question_map[q['id']] = q['text']
+                        elif isinstance(q, str):
+                            # 简单文本格式，生成临时ID
+                            temp_id = f'q_{len(question_map) + 1}'
+                            question_map[temp_id] = q
+                item['questionMap'] = question_map
+            except Exception as e:
+                print(f"Error parsing questions: {e}")
+                item['questionMap'] = {}
+        else:
+            item['questionMap'] = {}
+            
         result.append(item)
         
     return Response(
@@ -860,7 +947,6 @@ def export_user_responses():
         headers={'Content-Disposition': 'attachment;filename=responses_export.json'}
     )
 
-# EPUB File Upload Route
 @api_bp.route('/upload-epub', methods=['POST'])
 def upload_epub():
     """上传EPUB文件"""
@@ -887,7 +973,6 @@ def upload_epub():
     
     return jsonify({'success': True, 'filename': filename, 'filepath': filepath}), 201
 
-# MD File Upload Route
 @api_bp.route('/upload-md', methods=['POST'])
 def upload_md():
     """上传MD文件"""
@@ -903,7 +988,6 @@ def upload_md():
     if not filename:
         return jsonify({'error': 'No filename provided'}), 400
     
-    # Ensure the md_files directory exists
     upload_dir = os.path.join(os.path.dirname(__file__), 'md_files')
     if not os.path.exists(upload_dir):
         os.makedirs(upload_dir)
